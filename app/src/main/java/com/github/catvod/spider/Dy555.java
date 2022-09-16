@@ -382,7 +382,7 @@ public class Dy555 extends Spider {
             }
 
             wssClient(wssurl,wssreqeny);
-            Thread.sleep(300);
+            Thread.sleep(100);
             String wssrsp=rs;
             String m3u8link = decrypt(wssrsp,key,iv);
             JSONObject m3u8obj= new JSONObject(m3u8link);
