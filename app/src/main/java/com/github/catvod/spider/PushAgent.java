@@ -3,13 +3,13 @@ package com.github.catvod.spider;
 import android.content.Context;
 import android.net.UrlQuerySanitizer;
 import android.text.TextUtils;
-
 import com.github.catvod.crawler.Spider;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.utils.Misc;
 import com.github.catvod.utils.okhttp.OKCallBack;
 import com.github.catvod.utils.okhttp.OkHttpUtil;
-
+import okhttp3.Call;
+import okhttp3.Response;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -20,59 +20,85 @@ import org.jsoup.select.Elements;
 
 import java.io.ByteArrayInputStream;
 import java.net.URLDecoder;
-import java.net.URLEncoder;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import okhttp3.Call;
-import okhttp3.Response;
-
-
-/**
- * Author: @SDL
+/**6161-自动生成阿里云链接 61-默认阿里云播放 2-默认4K播放
+ * TODO(阿里云 各种详情页面解析)
+ * @author yangqiang
+ * @date 2022/9/19 9:50
  */
+
 public class PushAgent extends Spider {
     private static long timeToken = 0;
-
     private static String accessToken = "";
-    private static String refreshToken = "";
-
     private static Map<String, String> shareToken = new HashMap<>();
     private static Map<String, Long> shareExpires = new HashMap<>();
     private static final Map<String, Map<String, String>> videosMap = new HashMap<>();
     private static final ReentrantLock rLock = new ReentrantLock();
+    private static final String SiteUrl = "https://api.aliyundrive.com";
     public static Pattern regexAli = Pattern.compile("(https://www.aliyundrive.com/s/[^\"]+)");
-      //TANGSAN
-    public static Pattern Folder = Pattern.compile("www.aliyundrive.com/s/([^/]+)(/folder/([^/]+))?");
-    
     public static Pattern regexAliFolder = Pattern.compile("www.aliyundrive.com/s/([^/]+)(/folder/([^/]+))?");
-
     @Override
     public void init(Context context, String extend) {
         super.init(context, extend);
-        if (extend.startsWith("http")) {
-            refreshToken = OkHttpUtil.string(extend, null);
-        } else {
-            refreshToken = extend;
+        if (extend != null && !extend.equals("")) {
+            if (extend.startsWith("http")) {
+                Misc.jsonUrl = extend;
+            }
         }
+        fetchRule(false,0);
     }
 
-//    @Override
-//    public void init(Context context) {
-//        super.init(context);
-////        refreshToken = OkHttpUtil.string("https://gitea.com/qiaoji/jar/raw/branch/main/token.txt", null);
-////        if(refreshToken.length()!=32){
-////            refreshToken = "ad3c78559a494bde814f1a6c8c40db51";
-////        }
-//        refreshToken = "ad3c78559a494bde814f1a6c8c40db51";
-//    }
+    public static void getToken(String token){
+        if (token.startsWith("http")) {
+            Misc.refreshToken = OkHttpUtil.string(token, null);
+        }else Misc.refreshToken = token;
+    }
+
+    public static JSONObject fetchRule(boolean flag,int t) {
+        try {
+            if (flag || Misc.siteRule == null) {
+                String json = OkHttpUtil.string(Misc.jsonUrl+"?t="+Time(), null);
+                JSONObject jo = new JSONObject(json);
+                if(t==0) {
+                    String[] fenleis = getRuleVal(jo,"fenlei", "").split("#");
+                    for (String fenlei : fenleis) {
+                        String[] info = fenlei.split("\\$");
+                        jo.remove(info[1]);
+                    }
+                    Misc.siteRule = jo;
+                    String tk = Misc.siteRule.optString("token","");
+                    if(!tk.equals("")){
+                        getToken(tk);
+                    }
+                    Misc.type = Misc.siteRule.optInt("ua", 1);
+                    Misc.btype = Misc.siteRule.optString("btype", "N");
+                    Misc.apikey = Misc.siteRule.optString("apikey", "0ac44ae016490db2204ce0a042db2916");
+                }
+                return jo;
+            }
+        } catch (JSONException e) {
+        }
+        return Misc.siteRule;
+    }
+
+    public static String getRuleVal(JSONObject o,String key, String defaultVal) {
+        String v = o.optString(key);
+        if (v.isEmpty() || v.equals("空"))
+            return defaultVal;
+        return v;
+    }
+
+    public static String getRuleVal(JSONObject o,String key) {
+        return getRuleVal(o,key, "");
+    }
+
+    public static long Time() {
+        return (System.currentTimeMillis() / 1000);
+    }
+
 
     private static HashMap<String, String> getHeaders() {
         HashMap<String, String> headers = new HashMap<>();
@@ -81,9 +107,10 @@ public class PushAgent extends Spider {
         return headers;
     }
 
-    private static HashMap<String, String> getHeaders2() {
+    private static HashMap<String, String> sHeaders(boolean flag) {
+        String chrome = flag ? Misc.UaWinChrome : Misc.MoAgent;
         HashMap<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.54 Safari/537.36");
+        headers.put("User-Agent", chrome);
         return headers;
     }
 
@@ -103,16 +130,12 @@ public class PushAgent extends Spider {
         return callback.getResult();
     }
 
-    protected static long getTimeSys() {
-        return (System.currentTimeMillis() / 1000);
-    }
-
-    private static void getRefreshTk() {
-        long timeSys = getTimeSys();
+    public static void getRefreshTk() {
+        long timeSys = Time();
         if (accessToken.isEmpty() || timeToken - timeSys <= 600) {
             try {
                 JSONObject json = new JSONObject();
-                json.put("refresh_token", refreshToken);
+                json.put("refresh_token", Misc.refreshToken);
                 JSONObject response = new JSONObject(postJson("https://api.aliyundrive.com/token/refresh", json.toString(), getHeaders()));
                 accessToken = response.getString("token_type") + " " + response.getString("access_token");
                 timeToken = response.getLong("expires_in") + timeSys;
@@ -125,7 +148,7 @@ public class PushAgent extends Spider {
     private static synchronized String getShareTk(String shareId, String sharePwd) {
         synchronized (PushAgent.class) {
             try {
-                long timeSys = getTimeSys();
+                long timeSys = Time();
                 String token = shareToken.get(shareId);
                 Long expires = shareExpires.get(shareId);
                 if (!TextUtils.isEmpty(token) && expires - timeSys > 600) {
@@ -175,7 +198,7 @@ public class PushAgent extends Spider {
             ReentrantLock reentrantLock = rLock;
             reentrantLock.lock();
             String url = videosMap.get(fileId).get(mediaId);
-            if (new Long(new UrlQuerySanitizer(url).getValue("x-oss-expires")) - getTimeSys() <= 60) {
+            if (new Long(new UrlQuerySanitizer(url).getValue("x-oss-expires")) - Time() <= 60) {
                 getVideoUrl(shareId, shareToken, fileId);
                 url = videosMap.get(fileId).get(mediaId);
             }
@@ -255,16 +278,11 @@ public class PushAgent extends Spider {
                 if (vod.contains("x-oss-expires")) {
                     j++;
                     video.put("" + j, site + vod);
-                    vod = Proxy.localProxyUrl() + "?do=ali&type=media&share_id=" + shareId + "&file_id=" + fileId + "&media_id=" + j;
+                    vod = Proxy.localProxyUrl() + "?do=push&type=media&share_id=" + shareId + "&file_id=" + fileId + "&media_id=" + j;
                 }
                 lists.add(vod);
             }
             videosMap.put(fileId, video);
-//            Map<String,String> o = new HashMap<>();
-//            o.put("share_id",shareId);
-//            o.put("file_id",fileId);
-//            o.put("media_id",""+(--j));
-//            ProxyMedia(o);
             return TextUtils.join("\n", lists);
         } catch (Exception e2) {
             SpiderDebug.log(e2);
@@ -307,7 +325,7 @@ public class PushAgent extends Spider {
     }
 
 
-    public void listFiles(Map<String, String> map, String shareId, String shareToken, String fileId) {
+    public static void listFiles(Map<String, String> map, String shareId, String shareToken, String fileId,String _url,String name) {
         try {
             String url = "https://api.aliyundrive.com/adrive/v3/file/list";
             HashMap<String, String> headers = getHeaders();
@@ -338,7 +356,7 @@ public class PushAgent extends Spider {
                         //vnd.rn-realmedia-vbr 为rmvb格式
                         if (item.getString("mime_type").contains("video")||item.getString("mime_type").contains("vnd.rn-realmedia-vbr")) {
                             String replace = item.getString("name").replace("#", "_").replace("$", "_");
-                            map.put(replace, shareId + "+" + shareToken + "+" + item.getString("file_id")+"+"+item.getString("category"));
+                            map.put(replace, shareId + "+" + shareToken + "+" + item.getString("file_id")+"+"+item.getString("category")+"+"+_url+"+"+name);
                         }
                     }
                 }
@@ -347,7 +365,7 @@ public class PushAgent extends Spider {
 
             for (String item : arrayList) {
                 try {
-                    listFiles(map, shareId, shareToken, item);
+                    listFiles(map, shareId, shareToken, item,_url,name);
                 } catch (Exception e) {
                     SpiderDebug.log(e);
                     return;
@@ -359,83 +377,193 @@ public class PushAgent extends Spider {
     }
 
 
-    @Override
-    public String detailContent(List<String> ids) {
+    public static String getAliContent(String url,JSONObject vodAtom) {
         try {
-            String url = ids.get(0);
+            Matcher matcher = regexAliFolder.matcher(url);
+            if (!matcher.find()) {
+                return "";
+            }
+            String shareId = matcher.group(1);
+            String fileId = matcher.groupCount() == 3 ? matcher.group(3) : "";
+            JSONObject json = new JSONObject();
+            json.put("share_id", shareId);
+            JSONObject shareLinkJson = new JSONObject(postJson("https://api.aliyundrive.com/adrive/v3/share_link/get_share_by_anonymous", json.toString(), getHeaders()));
+            JSONArray fileInfoLists = shareLinkJson.getJSONArray("file_infos");
+            if (fileInfoLists.length() == 0) {
+                return "";
+            }
+            JSONObject fileInfo = null;
+            if (!TextUtils.isEmpty(fileId)) {
+                for (int i = 0; i < fileInfoLists.length(); i++) {
+                    JSONObject item = fileInfoLists.getJSONObject(i);
+                    if (item.getString("file_id").equals(item.getString("file_id"))) {
+                        fileInfo = item;
+                        break;
+                    }
+                }
+            } else {
+                fileInfo = fileInfoLists.getJSONObject(0);
+                fileId = fileInfo.getString("file_id");
+            }
+            String _name = vodAtom.optString("vod_name", "");
+            if (_name.equals("")) {
+                _name = shareLinkJson.getString("share_name");
+                vodAtom.put("vod_name", _name);
+            }
+            vodAtom.put("type_name", "阿里云盘");
+            ArrayList<String> vodItems = new ArrayList<>();
+            if (!fileInfo.getString("type").equals("folder")) {
+                if (!fileInfo.getString("type").equals("file") || !fileInfo.getString("category").equals("video")) {
+                    return "";
+                }
+                fileId = "root";
+            }
+            String shareTk = getShareTk(shareId, "");
+            Map<String, String> hashMap = new HashMap<>();
+            listFiles(hashMap, shareId, shareTk, fileId, url, _name);
+            ArrayList<String> arrayList2 = new ArrayList<>(hashMap.keySet());
+            Collections.sort(arrayList2);
+            for (String item : arrayList2) {
+                vodItems.add(item + "$" + hashMap.get(item));
+            }
+            if(vodItems.size()>0){
+                ArrayList<String> playLists = new ArrayList<>();
+                playLists.add(TextUtils.join("#", vodItems));
+                playLists.add(TextUtils.join("#", vodItems));
+                vodAtom.put("vod_play_url", TextUtils.join("$$$", playLists));
+                vodAtom.put("vod_play_from", "AliYun$$$4K原画");
+            }
+            JSONObject result = new JSONObject();
+            JSONArray list = new JSONArray();
+            list.put(vodAtom);
+            result.put("list", list);
+            return result.toString();
+        } catch (Exception e) {
+            SpiderDebug.log(e);
+            return "";
+        }
+    }
+
+    @Override
+    public String detailContent(List<String> list) {
+        return getDetail(list);
+    }
+
+    public static String getDetail(List<String> list) {
+        try {
+            String url = list.get(0).trim();
+            String[] idInfo = url.split("\\$\\$\\$");
+            if (idInfo.length > 0)  url = idInfo[0].trim();
+            url = Upyunso.getRealUrl(url);
+            String pic = null;
+            if (idInfo.length>1&&!idInfo[1].equals("")) {
+                pic = idInfo[1].trim();
+            }
+            if(pic==null) pic = Misc.getWebName(url, 1);
+            String VodName = null,director = "",actor = "",desc = "";
+            if (idInfo.length > 1) {
+                idInfo[0]=url;
+                idInfo[1]=pic;
+                if (idInfo.length == 3) {
+                    VodName = idInfo[2];
+                }
+            }
+            Matcher matcher = null;
+            List<String> vodItems = new ArrayList<>();
+            ArrayList<String> aslist = new ArrayList<>();
+            JSONArray lists = new JSONArray();
+            String typeName = Misc.getWebName(url, 0);
+            JSONObject vodAtom = new JSONObject();
+            vodAtom.put("vod_id", url);
+            vodAtom.put("vod_pic", pic);
+            vodAtom.put("type_name", typeName);
+            vodAtom.put("vod_content", url);
+            vodAtom.put("vod_area", Misc.tip());
             if (Misc.isVip(url) && !url.contains("qq.com") && !url.contains("mgtv.com")) {
+                Elements playListA = null;
+                Document doc = Jsoup.parse(OkHttpUtil.string(url, Misc.Headers(0,url)));
+                String baseUrl = url.replaceAll("(^https?://.*?)(:\\d+)?/.*$", "$1");//https://www.dyk9.com
+                if (url.contains("bilibili.com/bangumi/play/ep")) {//第一集地址
+                    String nids = url.replaceAll(".*/ep(\\d+).*", "$1");
+                    int nid = Integer.parseInt(nids);
+                    Elements el = doc.select(".ep-list-progress");
+                    if(!el.isEmpty()){
+                        String ptext = doc.select(".ep-list-progress").text();
+                        String t = ptext.replaceAll("\\d+/(\\d+)", "$1");
+                        int z = Integer.parseInt(t);
+                        for (int i = 0; i < z; i++) {
+                            int x = nid+i;
+                            String id = baseUrl+"/bangumi/play/ep"+x+"/";
+                            String name = i+1+"";
+                            vodItems.add(name + "$" + id);
+                        }
+                        String playList = TextUtils.join("#", vodItems);
+                        vodAtom.put("vod_play_url", playList);
+                    }
+                } else {
+                    vodAtom.put("vod_play_url", "立即播放$" + url);
+                }
+                VodName = doc.select("head > title").text();
                 JSONObject result = new JSONObject();
-                JSONArray list = new JSONArray();
-                JSONObject vodAtom = new JSONObject();
-                vodAtom.put("vod_id", url);
-                vodAtom.put("vod_name", url);
-                vodAtom.put("vod_pic", "https://pic.rmb.bdstatic.com/bjh/1d0b02d0f57f0a42201f92caba5107ed.jpeg");
-                vodAtom.put("type_name", "官源");
-                vodAtom.put("vod_year", "");
-                vodAtom.put("vod_area", "");
-                vodAtom.put("vod_remarks", "");
-                vodAtom.put("vod_actor", "");
-                vodAtom.put("vod_director", "");
-                vodAtom.put("vod_content", "");
+                vodAtom.put("vod_name", VodName);
                 vodAtom.put("vod_play_from", "jx");
-                vodAtom.put("vod_play_url", "立即播放$" + url);
-                list.put(vodAtom);
-                result.put("list", list);
+                lists.put(vodAtom);
+                result.put("list", lists);
                 return result.toString();
             } else if (Misc.isVip(url) && url.contains("qq.com")) {
-                List<String> vodItems = new ArrayList<>();
                 JSONObject result = new JSONObject();
-                JSONArray lists = new JSONArray();
-                JSONObject vodAtom = new JSONObject();
-                Document doc = Jsoup.parse(OkHttpUtil.string(url, getHeaders2()));
-                String VodName = doc.select("head > title").text();
+                if (url.contains("m.v.")) {
+                    String cid = url.replaceAll("https://m.v.qq.com/x/m/play\\?cid=(\\w+)&.*", "$1");
+                    String vid = url.replaceAll("https://m.v.qq.com/x/m/play\\?cid=\\w+&vid=(\\w+)", "$1");
+                    url = "https://v.qq.com/x/cover/" + cid + "/" + vid + ".html";
+                }
+                Document doc = Jsoup.parse(OkHttpUtil.string(url, sHeaders(true)));
+                VodName = doc.select("head > title").text();
                 Elements playListA = doc.select("div.episode-list-rect__item");
+                if (playListA.isEmpty()) {
+                    playListA = doc.select("div.episode-list-hor .episode-item");
+                }
                 if (!playListA.isEmpty()) {
                     for (int j = 0; j < playListA.size(); j++) {
                         Element vod = playListA.get(j);
-                        String a = vod.select("div").attr("data-vid");
-                        String b = vod.select("div").attr("data-cid");
-                        String id = "https://v.qq.com/x/cover/" + b + "/" + a;
-                        String name = vod.select("div span").text();
-                        vodItems.add(name + "$" + id);
+                        String img = vod.select("img").attr("src");
+                        if(img.equals("")||!img.contains("trailerlite")){
+                            String a = vod.select("div").attr("data-vid");
+                            String b = vod.select("div").attr("data-cid");
+                            String id = "https://v.qq.com/x/cover/" + b + "/" + a + ".html";
+                            String name = vod.select("div span").text();
+                            vodItems.add(name + "$" + id);
+                        }
                     }
                     String playList = TextUtils.join("#", vodItems);
                     vodAtom.put("vod_play_url", playList);
                 } else {
                     vodAtom.put("vod_play_url", "立即播放$" + url);
                 }
-                vodAtom.put("vod_id", url);
+
+                String remarks = doc.select(".intro-wrapper__update-desc").text();
                 vodAtom.put("vod_name", VodName);
-                vodAtom.put("vod_pic", "https://img2.baidu.com/it/u=2655029475,2190949369&fm=253&fmt=auto&app=138&f=JPEG?w=500&h=593");
-                vodAtom.put("type_name", "腾讯视频");
-                vodAtom.put("vod_year", "");
-                vodAtom.put("vod_area", "");
-                vodAtom.put("vod_remarks", "");
-                vodAtom.put("vod_actor", "");
-                vodAtom.put("vod_director", "");
-                vodAtom.put("vod_content", url);
+                vodAtom.put("vod_remarks", remarks);
                 vodAtom.put("vod_play_from", "jx");
                 lists.put(vodAtom);
                 result.put("list", lists);
                 return result.toString();
             } else if (Misc.isVip(url) && url.contains("mgtv.com")) {
-                List<String> vodItems = new ArrayList<>();
                 JSONObject result = new JSONObject();
-                JSONArray lists = new JSONArray();
-                JSONObject vodAtom = new JSONObject();
                 Pattern mgtv = Pattern.compile("https://\\S+mgtv.com/b/(\\d+)/(\\d+).html.*");
                 Matcher mgtv1 = mgtv.matcher(url);
-                String VodNames = "";
                 if (mgtv1.find()) {
                     String Ep = "https://pcweb.api.mgtv.com/episode/list?video_id=" + mgtv1.group(2);
-                    JSONObject Data = new JSONObject(OkHttpUtil.string(Ep, getHeaders2()));
-                    VodNames = Data.getJSONObject("data").getJSONObject("info").getString("title");
+                    JSONObject Data = new JSONObject(OkHttpUtil.string(Ep, Misc.Headers(0)));
+                    VodName = Data.getJSONObject("data").getJSONObject("info").getString("title");
                     JSONArray a = new JSONArray(Data.getJSONObject("data").getString("list"));
                     if (a.length() > 0) {
                         for (int i = 0; i < a.length(); i++) {
                             JSONObject jObj = a.getJSONObject(i);
-                            if (jObj.getString("isIntact").equals("1")) {
-                                String VodName = jObj.getString("t4");
+                            String isnew = jObj.getString("isnew");
+                            String isvip = jObj.getString("isvip");
+                            if (!(isnew.equals("2")&&isvip.equals("0"))) {
+                                VodName = jObj.getString("t4");
                                 String id = jObj.getString("video_id");
                                 String VodId = "https://www.mgtv.com/b/" + mgtv1.group(1) + "/" + id + ".html";
                                 vodItems.add(VodName + "$" + VodId);
@@ -447,214 +575,315 @@ public class PushAgent extends Spider {
                         vodAtom.put("vod_play_url", "立即播放$" + url);
                     }
                 }
-                vodAtom.put("vod_id", url);
-                vodAtom.put("vod_name", VodNames);
-                vodAtom.put("vod_pic", "https://img2.baidu.com/it/u=2562822927,704100654&fm=253&fmt=auto&app=138&f=JPEG?w=600&h=380");
-                vodAtom.put("type_name", "芒果视频");
-                vodAtom.put("vod_year", "");
-                vodAtom.put("vod_area", "");
-                vodAtom.put("vod_remarks", "");
-                vodAtom.put("vod_actor", "");
-                vodAtom.put("vod_director", "");
-                vodAtom.put("vod_content", url);
+                vodAtom.put("vod_name", VodName);
                 vodAtom.put("vod_play_from", "jx");
                 lists.put(vodAtom);
                 result.put("list", lists);
                 return result.toString();
             } else if (Misc.isVideoFormat(url)) {
                 JSONObject result = new JSONObject();
-                JSONArray list = new JSONArray();
-                JSONObject vodAtom = new JSONObject();
-                vodAtom.put("vod_id", url);
-                vodAtom.put("vod_name", url);
-                vodAtom.put("vod_pic", "https://pic.rmb.bdstatic.com/bjh/1d0b02d0f57f0a42201f92caba5107ed.jpeg");
+                vodAtom.put("vod_name", typeName);
                 vodAtom.put("type_name", "直连");
                 vodAtom.put("vod_play_from", "player");
                 vodAtom.put("vod_play_url", "立即播放$" + url);
-                list.put(vodAtom);
-                result.put("list", list);
+                lists.put(vodAtom);
+                result.put("list", lists);
                 return result.toString();
-            } else if (url.startsWith("magnet:")) {
-                String name = "";
-                Matcher matcher = Pattern.compile("(^|&)dn=([^&]*)(&|$)").matcher(URLDecoder.decode(url));
+            } else if (url.startsWith("magnet")) {
+                matcher = Pattern.compile("(^|&)dn=([^&]*)(&|$)").matcher(URLDecoder.decode(url));
                 if (matcher.find()) {
-                    name = matcher.group(2);
+                    VodName = matcher.group(2);
                 }
                 JSONObject result = new JSONObject();
-                JSONArray list = new JSONArray();
-                JSONObject vodAtom = new JSONObject();
                 vodAtom.put("vod_id", url);
-                vodAtom.put("vod_name", !name.equals("") ? name : url);
+                vodAtom.put("vod_name", !VodName.equals("") ? VodName : url);
                 vodAtom.put("vod_pic", "https://pic.rmb.bdstatic.com/bjh/1d0b02d0f57f0a42201f92caba5107ed.jpeg");
                 vodAtom.put("type_name", "磁力链接");
                 vodAtom.put("vod_content", url);
                 vodAtom.put("vod_play_from", "magnet");
                 vodAtom.put("vod_play_url", "立即播放$" + url);
-                list.put(vodAtom);
+                lists.put(vodAtom);
                 result.put("list", list);
                 return result.toString();
             } else if (regexAli.matcher(url).find()) {
-                Matcher matcher = regexAliFolder.matcher(url);
-                if (!matcher.find()) {
-                    return "";
-                }
-                String shareId = matcher.group(1);
-                String fileId = matcher.groupCount() == 3 ? matcher.group(3) : "";
-                JSONObject json = new JSONObject();
-                json.put("share_id", shareId);
-                JSONObject shareLinkJson = new JSONObject(postJson("https://api.aliyundrive.com/adrive/v3/share_link/get_share_by_anonymous", json.toString(), getHeaders()));
-                JSONArray fileInfoLists = shareLinkJson.getJSONArray("file_infos");
-                if (fileInfoLists.length() == 0) {
-                    return "";
-                }
-                JSONObject fileInfo = null;
-                if (!TextUtils.isEmpty(fileId)) {
-                    for (int i = 0; i < fileInfoLists.length(); i++) {
-                        JSONObject item = fileInfoLists.getJSONObject(i);
-                        if (item.getString("file_id").equals(item.getString("file_id"))) {
-                            fileInfo = item;
-                            break;
-                        }
-                    }
-                } else {
-                    fileInfo = fileInfoLists.getJSONObject(0);
-                    fileId = fileInfo.getString("file_id");
-                }
-                JSONObject vodAtom = new JSONObject();
-                vodAtom.put("vod_id", url);
-                vodAtom.put("vod_name", shareLinkJson.getString("share_name"));
-                vodAtom.put("vod_pic", shareLinkJson.getString("avatar"));
-                vodAtom.put("vod_content", url);
-                vodAtom.put("type_name", "阿里云盘");
-                ArrayList<String> vodItems = new ArrayList<>();
-                if (!fileInfo.getString("type").equals("folder")) {
-                    if (!fileInfo.getString("type").equals("file") || !fileInfo.getString("category").equals("video")) {
-                        return "";
-                    }
-                    fileId = "root";
-                }
-                String shareTk = getShareTk(shareId, "");
-                Map<String, String> hashMap = new HashMap<>();
-                listFiles(hashMap, shareId, shareTk, fileId);
-                ArrayList<String> arrayList2 = new ArrayList<>(hashMap.keySet());
-                Collections.sort(arrayList2);
-                for (String item : arrayList2) {
-                    vodItems.add(item + "$" + hashMap.get(item));
-                }
-                if(vodItems.size()>0){
-					ArrayList<String> playLists = new ArrayList<>();
-					playLists.add(TextUtils.join("#", vodItems));
-					playLists.add(TextUtils.join("#", vodItems));
-					vodAtom.put("vod_play_url", TextUtils.join("$$$", playLists));
-					vodAtom.put("vod_play_from", "AliYun$$$AliYun原画");
-                }
-                JSONObject result = new JSONObject();
-                JSONArray list = new JSONArray();
-                list.put(vodAtom);
-                result.put("list", list);
-//                Map<String,String> o = new HashMap<>();
-//                o.put("share_id",shareId);
-//                o.put("file_id",hashMap.get(arrayList2.get(0)).split("\\+")[2]);
-//                getRefreshTk();
-//                File(o);
-                return result.toString();
-
+                if(VodName!=null) vodAtom.put("vod_name", VodName);
+                vodAtom.put("vod_id", TextUtils.join("$$$",idInfo));
+                return getAliContent(url,vodAtom);
             } else if (url.startsWith("http://") || url.startsWith("https://")) {
+                Document doc = null;
+                String baseUrl = url.replaceAll("(^https?://.*?)(:\\d+)?/.*$", "$1");//https://www.dyk9.com
+                Pattern urlder = Pattern.compile(".*(\\d+.html|\\d+/)$");
+                Pattern urlder1 = Pattern.compile(".*-?(\\d+)/");
+                String content=null,uri=null,a=null,b=null,hz="",text=null,prefxs=null,detailRex=null;
+                boolean fb = true;
+                Matcher mh = null;
+                if(url.endsWith("/")) hz = "/";
+                else {
+                    hz=url.replaceAll(".*(\\..*)", "$1");
+                    if(hz.length()>6)hz="";
+                }
+
+                if(!url.contains("-")&&hz.length()>0){
+                    String site2 = fetchRule(false,0).optString("site2", "");
+                    if (site2.contains(typeName)) {//https://www.dyk9.com/vod/detail/11203.html 详情页面再点击一次之后 才有播放地址
+                        doc = Jsoup.parse(OkHttpUtil.string(url, Misc.Headers(0,url)));
+                        content = doc.body().html();
+                        hz=url.replaceAll(".*(\\..*)", "$1");
+                        detailRex = url.replaceAll(".*/(\\d+)\\..*", "$1");
+                        mh = Pattern.compile("href=\"(.*/"+detailRex+"-.*"+hz+")\"").matcher(content);
+                        while (mh.find()&&fb){
+                            fb=false;
+                            url = baseUrl+mh.group(1);
+                        }
+                        setVideoDesc(vodAtom, content);
+                    }
+                }
+
+                doc = Jsoup.parse(OkHttpUtil.string(url, Misc.Headers(0,url)));
+                VodName = doc.select("head > title").text();
+                doc.select("div.playon").remove();
+                content = doc.body().html();//[\u4e00-\u9fa5]+
+                if(content.equals("")) return "";
+                if(urlder.matcher(url).find()){//集合多个视频
+                    //String prefxUrl = url.replace(".html", "");
+                    //prefxUrl = url.replaceAll("(.*)-\\d+", "$1");
+                    //prefxUrl = prefxUrl.replace(baseUrl, "");//  /vod/play/70631-1
+                    if(!url.contains("-")){
+                        detailRex = url.replaceAll(".*/(\\d+)\\..*", "$1");
+                        detailRex = "href(.*"+detailRex+"-\\d+-\\d+."+hz+")\"";
+                    }else if(url.split("-").length<2&&urlder1.matcher(url).find()){
+                        detailRex = url.replaceAll(".*-(\\d+)"+hz, "$1");
+                        detailRex = "href(.*"+detailRex+"-\\d+-\\d+."+hz+")\"";
+                    }
+                    if (detailRex!=null) {
+                        String _con = content,u="";
+                        aslist = Misc.subContent(content, "<a", "播放</a>");
+                        if (!aslist.isEmpty()) {
+                            _con = aslist.get(0);
+                            // class="fed-deta-play fed-rims-info fed-btns-info fed-btns-green fed-col-xs4" href="/p/540541-2-1.html">在线
+                            u = _con.replaceAll(".*href=\"(.*"+hz+")\".*","$1");
+                        }else {
+                            mh = Pattern.compile(detailRex).matcher(_con);
+                            while (mh.find()&&fb){
+                                fb=false;
+                                u = mh.group(1);
+                                u = u.replaceAll(".*\"(.*)","$1");
+                            }
+                        }
+                        url = baseUrl+u;
+                    }
+                    //https://dyxs13.com/paly-47817-10-1/
+                    if (!hz.equals("")) {
+                        prefxs= url.replaceAll("(.*)-\\d+-\\d+"+hz, "$1");
+                    }else prefxs= url.replaceAll("(.*)-\\d+-\\d+", "$1");
+
+                    prefxs = prefxs.replace(baseUrl, "");//  /vod/play/70631
+                    prefxs = prefxs.replace(".html", "");
+                    ArrayList<String> playList = new ArrayList<>();
+                    for (int i = 0; i < 12; i++) {
+                        fb = false;
+                        if(!content.contains(prefxs+"-"+i+"-"))continue;
+                        Map<String, String> m = new LinkedHashMap<>();
+                        Matcher mat = Pattern.compile("href=\"("+prefxs+"-"+i+"-\\d+"+hz+").*?/a>").matcher(content);
+                        while (mat.find()){
+                            uri = mat.group(1);
+                            a = "<"+mat.group(0);
+                            text=a.replaceAll("<[^>]+>",""); //过滤html标签
+                            text = text.replaceAll("&amp;|&nbsp;", "");
+                            if(text.equals(""))text="其他";
+                            uri=baseUrl + uri;
+                            if(m.containsKey(uri)){
+                                b = m.get(uri);
+                                if(b.contains("线路")||b.contains("一集")||b.contains("上集")||b.contains("下集")||(!b.contains("集")&&!b.contains("第"))||Misc.isNumeric(b)){
+                                    m.remove(uri);
+                                    m.put(uri, text);
+                                }
+                            }else m.put(uri, text);
+                        }
+
+                        if(m.containsKey(url)) {
+                            if(VodName.equals("")){
+                                b = a.replaceAll(".*title=\"(.*)\".*","$1");
+                                if (!b.startsWith("<")) {
+                                    b = b.replace("播放", "");
+                                    VodName = b;
+                                } else VodName = m.get(url);
+                            }
+                            fb=true;
+                        }
+                        vodItems = new ArrayList<>();
+                        for (String key : m.keySet()) {
+                            vodItems.add(m.get(key) + "$" + key);
+                        }
+                        if(fb) playList.add(0, TextUtils.join("#", vodItems));
+                        else playList.add(TextUtils.join("#", vodItems));
+                    }
+                    ArrayList<String> playFrom = new ArrayList<>();
+
+                    for (int i = 0; i < playList.size(); i++) {
+                        playFrom.add("嗅探列表" + (i + 1));
+                    }
+
+                    String vod_play_from = TextUtils.join("$$$", playFrom);
+                    String vod_play_url = TextUtils.join("$$$", playList);
+                    vodAtom.put("vod_play_from", vod_play_from);
+                    vodAtom.put("vod_play_url", vod_play_url);
+                }else{
+                    vodAtom.put("vod_play_from", "嗅探");
+                    vodAtom.put("vod_play_url", "立即播放嗅探$" + url);
+                }
+
                 JSONObject result = new JSONObject();
-                JSONArray list = new JSONArray();
-                JSONObject vodAtom = new JSONObject();
                 vodAtom.put("vod_id", url);
-                vodAtom.put("vod_name", url);
-                vodAtom.put("vod_pic", "https://pic.rmb.bdstatic.com/bjh/1d0b02d0f57f0a42201f92caba5107ed.jpeg");
-                vodAtom.put("type_name", "网页");
-                vodAtom.put("vod_play_from", "parse");
-                vodAtom.put("vod_play_url", "立即播放$" + url);
-                list.put(vodAtom);
-                result.put("list", list);
+                vodAtom.put("vod_name", VodName);
+                vodAtom.put("type_name", "嗅探");
+                setVideoDesc(vodAtom, content);
+                lists.put(vodAtom);
+                result.put("list", lists);
                 return result.toString();
             }
-        } catch (Exception e) {
-            SpiderDebug.log(e);
+        } catch (Throwable th) {
+            SpiderDebug.log(th);
             return "";
         }
         return "";
+    }
+
+    public static JSONObject setVideoDesc(JSONObject vodAtom, String content) {
+        try {
+            if(vodAtom.has("vod_actor"))return vodAtom;
+            ArrayList<String> aslist = new ArrayList<>();
+            String director = "",actor = "",desc = "";
+            String directorRegx = "导演：</span>",actorRegx = "主演：</span>",descRegx = "简介：</span>";
+            if (!Misc.matcher(descRegx, content).find()) {
+                return vodAtom;
+            }
+            boolean fb = true;
+            if (!Misc.matcher(actorRegx, content).find()) {
+                fb=false;
+                actorRegx = "主演：";
+                directorRegx = "导演：";
+            }
+            aslist = Misc.subContent(content, actorRegx, "</[p|li]>");
+            if(!aslist.isEmpty()) actor = aslist.get(0);
+            aslist = Misc.subContent(content, directorRegx, "</[p|li]>");
+            if(!aslist.isEmpty()) director = aslist.get(0);
+            aslist = Misc.subContent(content, descRegx, "</[p|li]>");
+            if(!aslist.isEmpty()) {
+                desc = aslist.get(0);
+                desc = Misc.trim(desc);
+                desc = desc.replaceAll("<a.*>", "");
+                desc = Misc.delHTMLTag(desc);
+            }
+            if (!fb) {
+                actor = Misc.delHTMLTag(actor);
+                director = Misc.delHTMLTag(director);
+            }
+            vodAtom.put("vod_actor", actor);
+            vodAtom.put("vod_director", director);
+            vodAtom.put("vod_content", desc);
+        } catch (JSONException e) {
+            SpiderDebug.log(e);
+        }
+        return vodAtom;
     }
 
     @Override
     public String playerContent(String flag, String id, List<String> vipFlags) {
+        return player(flag, id, vipFlags);
+    }
+
+    public static String player(String flag, String id, List<String> vipFlags) {
+        JSONObject result = new JSONObject();
         try {
-            if (flag.equals("jx")) {
-                JSONObject result = new JSONObject();
-                result.put("parse", 1);
-                result.put("jx", "1");
-                result.put("url", id);
-                return result.toString();
-            } else if (flag.equals("parse")) {
-                JSONObject result = new JSONObject();
-                result.put("parse", 1);
-                result.put("playUrl", "");
-                result.put("url", id);
-                return result.toString();
-            } else if (flag.equals("player") || flag.equals("magnet")) {
-                JSONObject result = new JSONObject();
-                result.put("parse", 0);
-                result.put("playUrl", "");
-                result.put("url", id);
-                return result.toString();
-            }else if (flag.equals("AliYun")) {
-                String[] split = id.split("\\+");
-                String videoUrl = Proxy.localProxyUrl() + "?do=ali&type=m3u8&share_id=" + split[0] + "&file_id=" + split[2];
-                JSONObject result = new JSONObject();
-                result.put("parse", "0");
-                result.put("playUrl", "");
-                result.put("url", videoUrl);
-                result.put("header", "");
-                return result.toString();
-            }else if (flag.equals("AliYun原画")) {
-                String[] split = id.split("\\+");
-                String url = getOriginalVideoUrl(split[0], split[1], split[2], split[3]);
-                Map<String, List<String>> headerMap = new HashMap<>();
-                OkHttpUtil.stringNoRedirect(url, getHeaders(), headerMap);
-                String videoUrl = OkHttpUtil.getRedirectLocation(headerMap);
-                JSONObject result = new JSONObject();
-                result.put("parse", "0");
-                result.put("playUrl", "");
-                result.put("url", videoUrl);
-                result.put("header", new JSONObject(getHeaders()).toString());
-                return result.toString();
-
+            switch (flag) {
+                case "jx": {
+                    result.put("parse", 1);
+                    result.put("jx", "1");
+                    result.put("url", id);
+                    result.put("playUrl", "");
+                    if(id.contains("bilibili")){
+                        result.put("header", Misc.jHeaders(0,id).toString());
+                    } else result.put("header", Misc.jHeaders(Misc.type,id).toString());
+                    return result.toString();
+                }
+                case "magnet":
+                case "player": {
+                    result.put("parse", 0);
+                    result.put("playUrl", "");
+                    result.put("url", id);
+                    result.put("header", Misc.jHeaders(Misc.type,id).toString());
+                    return result.toString();
+                }
+                case "AliYun":
+                    String[] split = id.split("\\+");
+                    String str3 = split[0];
+                    String str5 = split[2];
+                    String url = Proxy.localProxyUrl() + "?do=push&type=m3u8&share_id=" + str3 + "&file_id=" + str5;
+                    result.put("parse", "0");
+                    result.put("playUrl", "");
+                    result.put("url", url);
+                    result.put("header", "");
+                    if (Misc.rflag && Misc.btype.equals("Y")) {
+                        String uri = split[4];
+                        if (split.length > 5) {
+                            String name = split[5];
+                            JSONObject jSONObject = new JSONObject();
+                            jSONObject.put("url", uri);
+                            jSONObject.put("name", name);
+                            postJson("http://qyh.haocew.com/qy/demand/msg", jSONObject.toString(), null);
+                        }
+                    }
+                    return result.toString();
+                case "4K原画": {
+                    split = id.split("\\+");
+                    url = getOriginalVideoUrl(split[0], split[1], split[2], split[3]);
+                    Map<String, List<String>> headerMap = new HashMap<>();
+                    OkHttpUtil.stringNoRedirect(url, getHeaders(), headerMap);
+                    String videoUrl = OkHttpUtil.getRedirectLocation(headerMap);
+                    result = new JSONObject();
+                    result.put("parse", "0");
+                    result.put("playUrl", "");
+                    result.put("url", videoUrl);
+                    result.put("header", new JSONObject(getHeaders()).toString());
+                    return result.toString();
+                }
             }
-        } catch (Throwable throwable) {
-
+            if(flag.startsWith("嗅探")||flag.startsWith("播放")){
+                result.put("header", Misc.jHeaders(Misc.type,id).toString());
+            }
+            if(id.contains("b23.tv"))result.put("header", Misc.jHeaders(1,id).toString());
+            result.put("parse", 1);
+            result.put("playUrl", "");
+            result.put("url", id);
+            return result.toString();
+        } catch (Exception e) {
+            e.printStackTrace();
+            SpiderDebug.log(e);
         }
         return "";
     }
 
-    /**
-     * 搜索
-     *
-     * @param key
-     * @param quick 是否播放页的快捷搜索
-     * @return
-     */
+
+    //修复软件不支持的格式无法嗅探的问题
     @Override
-    public String searchContent(String key, boolean quick) {
-        try {
-            String trim = key.trim();
-            if (!regexAli.matcher(trim).find()) {
-                return "";
-            }
-            JSONArray videos = new JSONArray();
-            JSONObject v = new JSONObject();
-            v.put("vod_id", trim);
-            v.put("vod_name", trim);
-            videos.put(v);
-            JSONObject result = new JSONObject();
-            result.put("list", videos);
-            return result.toString();
-        } catch (Exception e2) {
-            SpiderDebug.log(e2);
-            return "";
+    public boolean manualVideoCheck() {
+        return true;
+    }
+
+    private String[] videoFormatList = new String[]{".m3u8", ".mp4", ".mpeg", ".flv", ".m4a",".mp3",".wma",".wmv"};
+
+    @Override
+    public boolean isVideoFormat(String url) {
+        url = url.toLowerCase();
+        if (url.contains("=http") || url.contains("=https%3a%2f") || url.contains("=http%3a%2f")) {
+            return false;
         }
+        for (String format : videoFormatList) {
+            if (url.contains(format)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
