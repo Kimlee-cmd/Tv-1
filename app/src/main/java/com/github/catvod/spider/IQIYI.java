@@ -74,7 +74,7 @@ public class IQIYI extends Spider {
                         if (optJSONObject.optInt("sourceId") != 0) {
                             optString3 = "/video/video/baseinfo/" + optJSONObject.optString("tvId") + "?userInfo=verify&jsonpCbName=videoInfo39";
                         } else {
-                            optString3 = "/albums/album/avlistinfo?aid=" + optJSONObject.optString("albumId") + "&size=5000&page=1&url=" + optString3;
+                            optString3 = "/albums/album/avlistinfo?aid=" + optJSONObject.optString("albumId") + "&size=200";
                         }
                     } else if (optJSONObject.optLong("tvId") != 0) {
                         optString3 = "/video/video/baseinfo/" + optJSONObject.optString("tvId") + "?userInfo=verify&jsonpCbName=videoInfo39";
@@ -107,9 +107,11 @@ public class IQIYI extends Spider {
 
     public String detailContent(List<String> list) {
         try {
-            String url = "https://pcw-api.iqiyi.com" + list.get(0);
+            String url = "https://pcw-api.iqiyi.com" + list.get(0)+"&page=1";
             JSONObject jSONObject = new JSONObject(OkHttpUtil.string(url, getHeaders(url))).getJSONObject("data");
             JSONObject jSONObject2 = new JSONObject();
+            int page= jSONObject.optInt("page");
+            System.out.println("page-----------------"+page);
             JSONObject optJSONObject = jSONObject.optJSONArray("epsodelist") != null ? jSONObject.optJSONArray("epsodelist").optJSONObject(0) : jSONObject;
             jSONObject2.put("vod_id", list.get(0));
             jSONObject2.put("vod_name", optJSONObject.optString("name").replaceAll("第\\d+(?:集|期)", ""));
@@ -153,18 +155,32 @@ public class IQIYI extends Spider {
                 optJSONArray3 = new JSONArray();
                 optJSONArray3.put(jSONObject);
             }
+
             ArrayList arrayList3 = new ArrayList();
             for (int i3 = 0; i3 < optJSONArray3.length(); i3++) {
                 JSONObject optJSONObject3 = optJSONArray3.optJSONObject(i3);
                 arrayList3.add(optJSONObject3.optString("order") + " " + optJSONObject3.optString("subtitle") + "$" + optJSONObject3.optString("playUrl"));
             }
+
+            if(page>1){
+                for (int j = 0; j < page-1; j++) {
+                    int p = j+2;
+                    url = "https://pcw-api.iqiyi.com" + list.get(0)+"&page="+p;
+                    JSONArray optJSONArray4 = new JSONObject(OkHttpUtil.string(url, getHeaders(url))).getJSONObject("data").optJSONArray("epsodelist");
+                    for (int i4 = 0; i4 < optJSONArray4.length(); i4++) {
+                        JSONObject optJSONObject4 = optJSONArray4.optJSONObject(i4);
+                        arrayList3.add(optJSONObject4.optString("order") + " " + optJSONObject4.optString("subtitle") + "$" + optJSONObject4.optString("playUrl"));
+                    }
+                }
+            }
+
             jSONObject2.put("vod_play_from", "iqiyi");
             jSONObject2.put("vod_play_url", join("#", arrayList3));
             JSONObject jSONObject3 = new JSONObject();
             JSONArray jSONArray = new JSONArray();
             jSONArray.put(jSONObject2);
             jSONObject3.put("list", jSONArray);
-            return jSONObject3.toString(4);
+            return jSONObject3.toString();
         } catch (Exception e) {
             SpiderDebug.log(e);
             return "";
@@ -173,7 +189,9 @@ public class IQIYI extends Spider {
 
     protected HashMap<String, String> getHeaders(String str) {
         HashMap<String, String> hashMap = new HashMap<>();
-        hashMap.put("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36");
+        hashMap.put("User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36");
+        hashMap.put("Referer", str);
+        hashMap.put("Cookie", "");
         return hashMap;
     }
 
@@ -201,7 +219,7 @@ public class IQIYI extends Spider {
                         if (optJSONObject.optInt("sourceId") != 0) {
                             optString3 = "/video/video/baseinfo/" + optJSONObject.optString("tvId") + "?userInfo=verify&jsonpCbName=videoInfo39";
                         } else {
-                            optString3 = "/albums/album/avlistinfo?aid=" + optJSONObject.optString("albumId") + "&size=5000&page=1&url=" + optString3;
+                            optString3 = "/albums/album/avlistinfo?aid=" + optJSONObject.optString("albumId") + "&size=200";
                         }
                     } else if (optJSONObject.optLong("tvId") != 0) {
                         optString3 = "/video/video/baseinfo/" + optJSONObject.optString("tvId") + "?userInfo=verify&jsonpCbName=videoInfo39";
